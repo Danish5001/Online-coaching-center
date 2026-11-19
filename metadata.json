@@ -1,0 +1,6 @@
+{
+  "name": "ScholarAxis Academy",
+  "description": "Online coaching center for students and teachers from Nursery to Masters with syllabus books, progress tracking, live session scheduling, EasyPaisa $10 one-time registration, email verification, and automated notifications.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,474 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated student, teacher, or admin profile with academic level and one-time EasyPaisa fee status.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 150
+        },
+        "role": {
+          "type": "string",
+          "enum": ["student", "teacher", "admin"]
+        },
+        "academicLevel": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "gradeOrSpecialty": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["unpaid", "pending", "verified"]
+        },
+        "easypaisaTid": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "email",
+        "role",
+        "academicLevel",
+        "gradeOrSpecialty",
+        "paymentStatus",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SyllabusBook": {
+      "title": "SyllabusBook",
+      "description": "Curriculum syllabus book spanning Nursery to Masters uploaded by teachers or admin.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160
+        },
+        "academicLevel": {
+          "type": "string",
+          "enum": [
+            "Early Years (Nursery–KG)",
+            "Primary (Grades 1–5)",
+            "Middle (Grades 6–8)",
+            "Secondary (Grades 9–10)",
+            "Higher Secondary (Grades 11–12)",
+            "Bachelors (BS/BA/BSc)",
+            "Masters (MS/MA/MPhil)"
+          ]
+        },
+        "grade": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "boardOrAuthor": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "resourceUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "chapters": {
+          "type": "array",
+          "description": "Ordered chapter titles (1 to 30 chapters)"
+        },
+        "uploadedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "uploadedByName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "visibility": {
+          "type": "string",
+          "enum": ["public"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "title",
+        "academicLevel",
+        "grade",
+        "subject",
+        "boardOrAuthor",
+        "description",
+        "resourceUrl",
+        "chapters",
+        "uploadedByUid",
+        "uploadedByName",
+        "visibility",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StudentProgress": {
+      "title": "StudentProgress",
+      "description": "Per-student chapter completion progress for a specific syllabus book.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "bookId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "bookTitle": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "academicLevel": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "completedChapters": {
+          "type": "array",
+          "description": "Zero-based indices of completed chapters (max 30)"
+        },
+        "totalChapters": {
+          "type": "number"
+        },
+        "percentComplete": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "userId",
+        "bookId",
+        "bookTitle",
+        "academicLevel",
+        "completedChapters",
+        "totalChapters",
+        "percentComplete",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "LiveSession": {
+      "title": "LiveSession",
+      "description": "Scheduled live coaching session hosted by a teacher or admin.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "academicLevel": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "scheduledAt": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "durationMinutes": {
+          "type": "number"
+        },
+        "meetingUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "teacherUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "teacherName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "status": {
+          "type": "string",
+          "enum": ["scheduled", "live", "completed", "cancelled"]
+        },
+        "visibility": {
+          "type": "string",
+          "enum": ["public"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "title",
+        "academicLevel",
+        "subject",
+        "description",
+        "scheduledAt",
+        "durationMinutes",
+        "meetingUrl",
+        "teacherUid",
+        "teacherName",
+        "status",
+        "visibility",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PaymentRecord": {
+      "title": "PaymentRecord",
+      "description": "One-time $10 EasyPaisa QR registration fee submission and verification state.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "userEmail": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 150
+        },
+        "userRole": {
+          "type": "string",
+          "enum": ["student", "teacher"]
+        },
+        "amountUsd": {
+          "type": "number"
+        },
+        "amountPkr": {
+          "type": "number"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["easypaisa"]
+        },
+        "transactionId": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 40,
+          "pattern": "^[a-zA-Z0-9\\-]+$"
+        },
+        "senderPhone": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 20
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "userId",
+        "userName",
+        "userEmail",
+        "userRole",
+        "amountUsd",
+        "amountPkr",
+        "method",
+        "transactionId",
+        "senderPhone",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "Automated personal or academy-wide notification item.",
+      "type": "object",
+      "properties": {
+        "recipientUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["system", "payment", "book", "session", "progress"]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 140
+        },
+        "message": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 500
+        },
+        "isRead": {
+          "type": "boolean"
+        },
+        "createdByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "recipientUid",
+        "type",
+        "title",
+        "message",
+        "isRead",
+        "createdByUid",
+        "createdAt"
+      ]
+    },
+    "PaymentSettings": {
+      "title": "PaymentSettings",
+      "description": "Academy EasyPaisa QR and one-time fee settings managed by admin.",
+      "type": "object",
+      "properties": {
+        "easypaisaAccountTitle": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "easypaisaNumber": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "qrImageData": {
+          "type": "string",
+          "maxLength": 500000
+        },
+        "feeUsd": {
+          "type": "number"
+        },
+        "feePkr": {
+          "type": "number"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "easypaisaAccountTitle",
+        "easypaisaNumber",
+        "qrImageData",
+        "feeUsd",
+        "feePkr",
+        "updatedByUid",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profile documents (PII isolated to owner or admin)."
+    },
+    "/syllabusBooks/{bookId}": {
+      "schema": { "$ref": "#/entities/SyllabusBook" },
+      "description": "Syllabus books from Nursery to Masters uploaded by teachers or admin."
+    },
+    "/progress/{progressId}": {
+      "schema": { "$ref": "#/entities/StudentProgress" },
+      "description": "Per-student chapter progress records for syllabus books."
+    },
+    "/liveSessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/LiveSession" },
+      "description": "Live coaching sessions scheduled by teachers or admin."
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/PaymentRecord" },
+      "description": "EasyPaisa $10 one-time registration fee submissions."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationItem" },
+      "description": "Automated personal and broadcast notifications."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/PaymentSettings" },
+      "description": "Academy configuration including EasyPaisa QR details."
+    }
+  }
+}

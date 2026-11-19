@@ -1,0 +1,467 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 0: Global Safety Net (Default-Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Pillar 3: Reusable Hardened Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerified() &&
+        request.auth.token.email == 'danishmehmood5001@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(uid) {
+      return isVerified() && request.auth.uid == uid;
+    }
+
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isTeacherOrAdmin() {
+      return isAdmin() || (
+        isVerified() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserRole() == 'teacher'
+      );
+    }
+
+    // --- Validation Blueprints (Pillar 2 & Pillar 5) ---
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'email', 'role', 'academicLevel',
+          'gradeOrSpecialty', 'paymentStatus', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'displayName', 'email', 'role', 'academicLevel',
+          'gradeOrSpecialty', 'paymentStatus', 'easypaisaTid', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.uid) &&
+        data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 100 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
+        data.role in ['student', 'teacher', 'admin'] &&
+        data.academicLevel is string && data.academicLevel.size() >= 2 && data.academicLevel.size() <= 60 &&
+        data.gradeOrSpecialty is string && data.gradeOrSpecialty.size() <= 100 &&
+        data.paymentStatus in ['unpaid', 'pending', 'verified'] &&
+        (!('easypaisaTid' in data) || (data.easypaisaTid is string && data.easypaisaTid.size() <= 50)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSyllabusBook(data) {
+      return data.keys().hasAll([
+          'title', 'academicLevel', 'grade', 'subject', 'boardOrAuthor',
+          'description', 'resourceUrl', 'chapters', 'uploadedByUid',
+          'uploadedByName', 'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'title', 'academicLevel', 'grade', 'subject', 'boardOrAuthor',
+          'description', 'resourceUrl', 'chapters', 'uploadedByUid',
+          'uploadedByName', 'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        data.title is string && data.title.size() >= 2 && data.title.size() <= 160 &&
+        data.academicLevel in [
+          'Early Years (Nursery–KG)',
+          'Primary (Grades 1–5)',
+          'Middle (Grades 6–8)',
+          'Secondary (Grades 9–10)',
+          'Higher Secondary (Grades 11–12)',
+          'Bachelors (BS/BA/BSc)',
+          'Masters (MS/MA/MPhil)'
+        ] &&
+        data.grade is string && data.grade.size() >= 1 && data.grade.size() <= 60 &&
+        data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 80 &&
+        data.boardOrAuthor is string && data.boardOrAuthor.size() >= 2 && data.boardOrAuthor.size() <= 100 &&
+        data.description is string && data.description.size() <= 1000 &&
+        data.resourceUrl is string && data.resourceUrl.size() <= 500 &&
+        data.chapters is list && data.chapters.size() >= 1 && data.chapters.size() <= 30 &&
+        data.chapters[0] is string && data.chapters[0].size() <= 160 &&
+        isValidId(data.uploadedByUid) &&
+        data.uploadedByName is string && data.uploadedByName.size() >= 1 && data.uploadedByName.size() <= 100 &&
+        data.visibility == 'public' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStudentProgress(data) {
+      return data.keys().hasAll([
+          'userId', 'bookId', 'bookTitle', 'academicLevel',
+          'completedChapters', 'totalChapters', 'percentComplete',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'userId', 'bookId', 'bookTitle', 'academicLevel',
+          'completedChapters', 'totalChapters', 'percentComplete',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.userId) &&
+        isValidId(data.bookId) &&
+        data.bookTitle is string && data.bookTitle.size() >= 1 && data.bookTitle.size() <= 160 &&
+        data.academicLevel is string && data.academicLevel.size() >= 2 && data.academicLevel.size() <= 60 &&
+        data.completedChapters is list && data.completedChapters.size() <= 30 &&
+        (data.completedChapters.size() == 0 || data.completedChapters[0] is int) &&
+        data.totalChapters is int && data.totalChapters >= 1 && data.totalChapters <= 30 &&
+        data.percentComplete is int && data.percentComplete >= 0 && data.percentComplete <= 100 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidLiveSession(data) {
+      return data.keys().hasAll([
+          'title', 'academicLevel', 'subject', 'description',
+          'scheduledAt', 'durationMinutes', 'meetingUrl',
+          'teacherUid', 'teacherName', 'status', 'visibility',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'title', 'academicLevel', 'subject', 'description',
+          'scheduledAt', 'durationMinutes', 'meetingUrl',
+          'teacherUid', 'teacherName', 'status', 'visibility',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.title is string && data.title.size() >= 3 && data.title.size() <= 160 &&
+        data.academicLevel is string && data.academicLevel.size() >= 2 && data.academicLevel.size() <= 60 &&
+        data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 80 &&
+        data.description is string && data.description.size() <= 1000 &&
+        data.scheduledAt is string && data.scheduledAt.size() >= 8 && data.scheduledAt.size() <= 40 &&
+        data.durationMinutes is int && data.durationMinutes >= 15 && data.durationMinutes <= 240 &&
+        data.meetingUrl is string && data.meetingUrl.size() <= 500 &&
+        isValidId(data.teacherUid) &&
+        data.teacherName is string && data.teacherName.size() >= 1 && data.teacherName.size() <= 100 &&
+        data.status in ['scheduled', 'live', 'completed', 'cancelled'] &&
+        data.visibility == 'public' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPaymentRecord(data) {
+      return data.keys().hasAll([
+          'userId', 'userName', 'userEmail', 'userRole',
+          'amountUsd', 'amountPkr', 'method', 'transactionId',
+          'senderPhone', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'userId', 'userName', 'userEmail', 'userRole',
+          'amountUsd', 'amountPkr', 'method', 'transactionId',
+          'senderPhone', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.userId) &&
+        data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 100 &&
+        data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 150 &&
+        data.userRole in ['student', 'teacher'] &&
+        data.amountUsd == 10 &&
+        data.amountPkr is int && data.amountPkr >= 2500 && data.amountPkr <= 3500 &&
+        data.method == 'easypaisa' &&
+        data.transactionId is string && data.transactionId.size() >= 6 && data.transactionId.size() <= 40 &&
+        data.transactionId.matches('^[a-zA-Z0-9\\-]+$') &&
+        data.senderPhone is string && data.senderPhone.size() >= 7 && data.senderPhone.size() <= 20 &&
+        data.status in ['pending', 'approved', 'rejected'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll([
+          'recipientUid', 'type', 'title', 'message',
+          'isRead', 'createdByUid', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'recipientUid', 'type', 'title', 'message',
+          'isRead', 'createdByUid', 'createdAt'
+        ]) &&
+        isValidId(data.recipientUid) &&
+        data.type in ['system', 'payment', 'book', 'session', 'progress'] &&
+        data.title is string && data.title.size() >= 2 && data.title.size() <= 140 &&
+        data.message is string && data.message.size() >= 2 && data.message.size() <= 500 &&
+        data.isRead is bool &&
+        isValidId(data.createdByUid) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidPaymentSettings(data) {
+      return data.keys().hasAll([
+          'easypaisaAccountTitle', 'easypaisaNumber', 'qrImageData',
+          'feeUsd', 'feePkr', 'updatedByUid', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'easypaisaAccountTitle', 'easypaisaNumber', 'qrImageData',
+          'feeUsd', 'feePkr', 'updatedByUid', 'updatedAt'
+        ]) &&
+        data.easypaisaAccountTitle is string && data.easypaisaAccountTitle.size() >= 2 && data.easypaisaAccountTitle.size() <= 100 &&
+        data.easypaisaNumber is string && data.easypaisaNumber.size() >= 7 && data.easypaisaNumber.size() <= 30 &&
+        data.qrImageData is string && data.qrImageData.size() <= 500000 &&
+        data.feeUsd == 10 &&
+        data.feePkr is int && data.feePkr >= 2500 && data.feePkr <= 3500 &&
+        isValidId(data.updatedByUid) &&
+        data.updatedAt is timestamp;
+    }
+
+    // --- Collection Match Blocks ---
+
+    // 1. Users (PII isolated strictly to Owner or Admin)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin() || (isVerified() && resource.data.uid == request.auth.uid);
+
+      allow create: if isVerified() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == userId &&
+        incoming().uid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (
+          (isAdmin() && incoming().role == 'admin' && incoming().paymentStatus == 'verified') ||
+          (incoming().role in ['student', 'teacher'] && incoming().paymentStatus == 'unpaid')
+        );
+
+      allow update: if isVerified() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          // Admin override (can verify payments or adjust roles)
+          isAdmin() ||
+          // Owner Action: Update own academic profile
+          (
+            isOwner(userId) &&
+            incoming().role == existing().role &&
+            incoming().paymentStatus == existing().paymentStatus &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'academicLevel', 'gradeOrSpecialty', 'updatedAt'])
+          ) ||
+          // Owner Action: Submit EasyPaisa TID (unpaid -> pending only)
+          (
+            isOwner(userId) &&
+            existing().paymentStatus == 'unpaid' &&
+            incoming().paymentStatus == 'pending' &&
+            incoming().role == existing().role &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'easypaisaTid', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // 2. Syllabus Books (Nursery to Masters)
+    match /syllabusBooks/{bookId} {
+      allow get: if isValidId(bookId) && isVerified() && resource.data.visibility == 'public';
+      allow list: if isVerified() && resource.data.visibility == 'public';
+
+      allow create: if isVerified() &&
+        isValidId(bookId) &&
+        isValidSyllabusBook(incoming()) &&
+        incoming().uploadedByUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isTeacherOrAdmin();
+
+      allow update: if isVerified() &&
+        isValidId(bookId) &&
+        isValidSyllabusBook(incoming()) &&
+        incoming().uploadedByUid == existing().uploadedByUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            existing().uploadedByUid == request.auth.uid &&
+            isTeacherOrAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'academicLevel', 'grade', 'subject', 'boardOrAuthor',
+              'description', 'resourceUrl', 'chapters', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(bookId) && (
+        isAdmin() ||
+        (isTeacherOrAdmin() && existing().uploadedByUid == request.auth.uid)
+      );
+    }
+
+    // 3. Student Progress
+    match /progress/{progressId} {
+      allow get: if isValidId(progressId) && (isAdmin() || (isVerified() && resource.data.userId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.userId == request.auth.uid);
+
+      allow create: if isVerified() &&
+        isValidId(progressId) &&
+        isValidStudentProgress(incoming()) &&
+        incoming().userId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/syllabusBooks/$(incoming().bookId));
+
+      allow update: if isVerified() &&
+        isValidId(progressId) &&
+        isValidStudentProgress(incoming()) &&
+        incoming().userId == existing().userId &&
+        incoming().bookId == existing().bookId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            existing().userId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'completedChapters', 'totalChapters', 'percentComplete', 'bookTitle', 'academicLevel', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(progressId) && (isAdmin() || (isVerified() && existing().userId == request.auth.uid));
+    }
+
+    // 4. Live Coaching Sessions
+    match /liveSessions/{sessionId} {
+      allow get: if isValidId(sessionId) && isVerified() && resource.data.visibility == 'public';
+      allow list: if isVerified() && resource.data.visibility == 'public';
+
+      allow create: if isVerified() &&
+        isValidId(sessionId) &&
+        isValidLiveSession(incoming()) &&
+        incoming().teacherUid == request.auth.uid &&
+        incoming().status == 'scheduled' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isTeacherOrAdmin();
+
+      allow update: if isVerified() &&
+        isValidId(sessionId) &&
+        isValidLiveSession(incoming()) &&
+        incoming().teacherUid == existing().teacherUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            existing().teacherUid == request.auth.uid &&
+            existing().status in ['scheduled', 'live'] &&
+            isTeacherOrAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'academicLevel', 'subject', 'description',
+              'scheduledAt', 'durationMinutes', 'meetingUrl', 'status', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(sessionId) && (
+        isAdmin() ||
+        (isTeacherOrAdmin() && existing().teacherUid == request.auth.uid)
+      );
+    }
+
+    // 5. EasyPaisa $10 Payments (PII isolated to Owner or Admin)
+    match /payments/{paymentId} {
+      allow get: if isValidId(paymentId) && (isAdmin() || (isVerified() && resource.data.userId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.userId == request.auth.uid);
+
+      allow create: if isVerified() &&
+        isValidId(paymentId) &&
+        isValidPaymentRecord(incoming()) &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isVerified() &&
+        isValidId(paymentId) &&
+        isValidPaymentRecord(incoming()) &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(paymentId);
+    }
+
+    // 6. Automated Notifications
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && (
+        isAdmin() ||
+        (isVerified() && (resource.data.recipientUid == request.auth.uid || resource.data.recipientUid == 'all'))
+      );
+      allow list: if isAdmin() || (
+        isVerified() && (resource.data.recipientUid == request.auth.uid || resource.data.recipientUid == 'all')
+      );
+
+      allow create: if isVerified() &&
+        isValidId(notificationId) &&
+        isValidNotification(incoming()) &&
+        incoming().createdByUid == request.auth.uid &&
+        incoming().isRead == false &&
+        incoming().createdAt == request.time &&
+        (
+          isAdmin() ||
+          incoming().recipientUid == request.auth.uid ||
+          (incoming().recipientUid == 'all' && isTeacherOrAdmin())
+        );
+
+      allow update: if isVerified() &&
+        isValidId(notificationId) &&
+        isValidNotification(incoming()) &&
+        incoming().recipientUid == existing().recipientUid &&
+        incoming().createdByUid == existing().createdByUid &&
+        incoming().createdAt == existing().createdAt &&
+        (
+          isAdmin() ||
+          (
+            existing().recipientUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['isRead'])
+          )
+        );
+
+      allow delete: if isValidId(notificationId) && (
+        isAdmin() ||
+        (isVerified() && existing().recipientUid == request.auth.uid)
+      );
+    }
+
+    // 7. Academy Settings (EasyPaisa QR & Fee Config)
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId) && isVerified();
+      allow list: if false;
+
+      allow create: if isAdmin() &&
+        isValidId(settingId) &&
+        isValidPaymentSettings(incoming()) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(settingId) &&
+        isValidPaymentSettings(incoming()) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().updatedAt == request.time;
+
+      allow delete: if isAdmin() && isValidId(settingId);
+    }
+  }
+}

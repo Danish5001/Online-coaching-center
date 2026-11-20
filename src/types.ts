@@ -116,6 +116,22 @@ export interface PaymentSettings {
   updatedAt?: Timestamp;
 }
 
+export type MarketingChannel = 'whatsapp' | 'facebook' | 'instagram' | 'youtube' | 'general';
+
+export interface MarketingCampaign {
+  id: string;
+  title: string;
+  channel: MarketingChannel;
+  headline: string;
+  bodyText: string;
+  ctaText: string;
+  targetUrl: string;
+  status: 'active' | 'paused';
+  createdByUid: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   easypaisaAccountTitle: 'MUHAMMAD DANISH MEHMOOD',
   easypaisaNumber: '923132746091',
@@ -124,6 +140,48 @@ export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   feePkr: 2780,
   updatedByUid: 'system',
 };
+
+export const STARTER_MARKETING_CAMPAIGNS: Omit<
+  MarketingCampaign,
+  'id' | 'createdByUid' | 'createdAt' | 'updatedAt' | 'targetUrl'
+>[] = [
+  {
+    title: 'WhatsApp Admissions Broadcast (Nursery to Masters)',
+    channel: 'whatsapp',
+    headline: 'Admissions Open — ScholarAxis Online Coaching Center',
+    bodyText:
+      'Complete syllabus books from Nursery to Masters, chapter-by-chapter progress tracking, and live interactive classes with qualified teachers. Pay just $10 once (PKR 2,780) via EasyPaisa (923132746091) for lifetime access. No monthly fee!',
+    ctaText: 'Enroll Now',
+    status: 'active',
+  },
+  {
+    title: 'Facebook Sponsored Post — Parents & Students',
+    channel: 'facebook',
+    headline: 'One Online Coaching Center for Every Grade: Nursery to Masters',
+    bodyText:
+      'Stop paying heavy monthly tuition fees. Get verified student access to all syllabus books (Nursery–KG, Primary, Middle, Matric/O-Level, FSc/A-Level, BS & Masters), live coaching sessions, and automated class reminders for a single $10 one-time EasyPaisa fee.',
+    ctaText: 'Sign In as Student',
+    status: 'active',
+  },
+  {
+    title: 'Instagram Story / Reel Caption — Quick Promo',
+    channel: 'instagram',
+    headline: '$10 Lifetime Access · Nursery to Masters Syllabus & Live Classes',
+    bodyText:
+      'Study smarter with ScholarAxis Academy. Track every chapter you finish, join live faculty sessions, and access textbooks across all 7 academic tiers. Scan EasyPaisa QR or send to 923132746091 to unlock full access today.',
+    ctaText: 'Start Learning',
+    status: 'active',
+  },
+  {
+    title: 'Teacher Recruitment Ad — LinkedIn & WhatsApp',
+    channel: 'general',
+    headline: 'Teach Online at ScholarAxis Academy',
+    bodyText:
+      'Are you a qualified educator for Primary, Matric, FSc, O/A-Levels, Bachelors, or Masters? Sign in as a Teacher on ScholarAxis Academy to upload syllabus books, schedule live classes, and coach students nationwide.',
+    ctaText: 'Join as Teacher',
+    status: 'active',
+  },
+];
 
 export const STARTER_SYLLABUS_BOOKS: Omit<
   SyllabusBook,

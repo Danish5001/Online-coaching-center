@@ -444,6 +444,27 @@ service cloud.firestore {
       );
     }
 
+    function isValidMarketingCampaign(data) {
+      return data.keys().hasAll([
+          'title', 'channel', 'headline', 'bodyText', 'ctaText',
+          'targetUrl', 'status', 'createdByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'title', 'channel', 'headline', 'bodyText', 'ctaText',
+          'targetUrl', 'status', 'createdByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        data.title is string && data.title.size() >= 2 && data.title.size() <= 140 &&
+        data.channel in ['whatsapp', 'facebook', 'instagram', 'youtube', 'general'] &&
+        data.headline is string && data.headline.size() >= 2 && data.headline.size() <= 160 &&
+        data.bodyText is string && data.bodyText.size() >= 2 && data.bodyText.size() <= 1000 &&
+        data.ctaText is string && data.ctaText.size() >= 2 && data.ctaText.size() <= 80 &&
+        data.targetUrl is string && data.targetUrl.size() <= 500 &&
+        data.status in ['active', 'paused'] &&
+        isValidId(data.createdByUid) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
     // 7. Academy Settings (EasyPaisa QR & Fee Config)
     match /settings/{settingId} {
       allow get: if isValidId(settingId) && isVerified();
@@ -462,6 +483,31 @@ service cloud.firestore {
         incoming().updatedAt == request.time;
 
       allow delete: if isAdmin() && isValidId(settingId);
+    }
+
+    // 8. Admin Marketing Campaigns (Ads, Share Links & Copy)
+    match /marketingCampaigns/{campaignId} {
+      allow get: if isValidId(campaignId) && isAdmin();
+      allow list: if isAdmin();
+
+      allow create: if isAdmin() &&
+        isValidId(campaignId) &&
+        isValidMarketingCampaign(incoming()) &&
+        incoming().createdByUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(campaignId) &&
+        isValidMarketingCampaign(incoming()) &&
+        incoming().createdByUid == existing().createdByUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'channel', 'headline', 'bodyText', 'ctaText', 'targetUrl', 'status', 'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidId(campaignId);
     }
   }
 }

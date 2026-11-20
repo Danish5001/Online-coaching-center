@@ -4,12 +4,16 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import {
   BarChart3,
   Bell,
+  BookMarked,
   BookOpen,
+  Bot,
   Calendar,
   CheckCircle2,
   CreditCard,
+  Languages,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   Menu,
   ShieldCheck,
   X,
@@ -18,6 +22,7 @@ import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import {
   ACADEMIC_LEVELS,
   LiveSession,
+  MarketingCampaign,
   NotificationItem,
   PaymentRecord,
   PaymentSettings,
@@ -25,12 +30,25 @@ import {
   SyllabusBook,
   UserProfile,
 } from '../types';
+import { AiStudyChatbot, ChatContextHint } from './AiStudyChatbot';
 import { LiveSessionsView } from './LiveSessionsView';
+import { MarketingAdminView } from './MarketingAdminView';
 import { NotificationsDrawer } from './NotificationsDrawer';
 import { PaymentsAdminView } from './PaymentsAdminView';
+import { QuranView } from './QuranView';
 import { SyllabusLibrary } from './SyllabusLibrary';
+import { TranslatorVoiceBotView } from './TranslatorVoiceBotView';
 
-type NavTab = 'overview' | 'syllabus' | 'sessions' | 'progress' | 'payments';
+type NavTab =
+  | 'overview'
+  | 'syllabus'
+  | 'quran'
+  | 'translator'
+  | 'sessions'
+  | 'progress'
+  | 'assistant'
+  | 'payments'
+  | 'marketing';
 
 interface DashboardWorkspaceProps {
   profile: UserProfile;
@@ -41,11 +59,14 @@ export function DashboardWorkspace({ profile, paymentSettings }: DashboardWorksp
   const [activeTab, setActiveTab] = useState<NavTab>('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
+  const [aiContextHint, setAiContextHint] = useState<ChatContextHint | null>(null);
 
   const [books, setBooks] = useState<SyllabusBook[]>([]);
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [progressList, setProgressList] = useState<StudentProgress[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [campaigns, setCampaigns] = useState<MarketingCampaign[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [seenBroadcastIds, setSeenBroadcastIds] = useState<string[]>(() => {
     try {
@@ -126,12 +147,26 @@ export function DashboardWorkspace({ profile, paymentSettings }: DashboardWorksp
       (err) => handleFirestoreError(err, OperationType.LIST, 'notifications')
     );
 
+    let unsubCampaigns = () => {};
+    if (profile.role === 'admin') {
+      unsubCampaigns = onSnapshot(
+        collection(db, 'marketingCampaigns'),
+        (snap) => {
+          const items = snap.docs.map((d) => ({ id: d.id, ...d.data() } as MarketingCampaign));
+          items.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+          setCampaigns(items);
+        },
+        (err) => handleFirestoreError(err, OperationType.LIST, 'marketingCampaigns')
+      );
+    }
+
     return () => {
       unsubBooks();
       unsubSessions();
       unsubProgress();
       unsubPayments();
       unsubNotifs();
+      unsubCampaigns();
     };
   }, [profile.uid, profile.role]);
 
@@ -171,21 +206,31 @@ export function DashboardWorkspace({ profile, paymentSettings }: DashboardWorksp
   const navItems: { id: NavTab; label: string; icon: typeof LayoutDashboard }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'syllabus', label: 'Syllabus Books', icon: BookOpen },
+    { id: 'quran', label: 'Holy Quran & Urdu', icon: BookMarked },
+    { id: 'translator', label: 'Translator & Voice Bot', icon: Languages },
     { id: 'sessions', label: 'Live Sessions', icon: Calendar },
     { id: 'progress', label: 'Progress Tracker', icon: BarChart3 },
+    { id: 'assistant', label: 'AI Study Assistant', icon: Bot },
     {
       id: 'payments',
       label: profile.role === 'admin' ? 'EasyPaisa & Approvals' : 'EasyPaisa Fee ($10)',
       icon: CreditCard,
     },
+    ...(profile.role === 'admin'
+      ? [{ id: 'marketing' as NavTab, label: 'Marketing & Ads', icon: Megaphone }]
+      : []),
   ];
 
   const tabTitles: Record<NavTab, string> = {
     overview: 'Overview',
     syllabus: 'Syllabus Books',
+    quran: 'Holy Quran & Urdu',
+    translator: 'Translator & Voice Bot',
     sessions: 'Live Sessions',
     progress: 'Progress Tracker',
+    assistant: 'AI Study Assistant',
     payments: profile.role === 'admin' ? 'EasyPaisa & Approvals' : 'EasyPaisa Fee ($10)',
+    marketing: 'Marketing & Ads',
   };
 
   return (
@@ -521,11 +566,38 @@ export function DashboardWorkspace({ profile, paymentSettings }: DashboardWorksp
           )}
 
           {activeTab === 'syllabus' && (
-            <SyllabusLibrary profile={profile} books={books} progressMap={progressMap} />
+            <SyllabusLibrary
+              profile={profile}
+              books={books}
+              progressMap={progressMap}
+              onAskAi={(ctx) => {
+                setAiContextHint(ctx);
+                setAiDrawerOpen(true);
+              }}
+            />
           )}
+
+          {activeTab === 'quran' && <QuranView />}
+
+          {activeTab === 'translator' && <TranslatorVoiceBotView />}
 
           {activeTab === 'sessions' && (
             <LiveSessionsView profile={profile} sessions={sessions} />
+          )}
+
+          {activeTab === 'assistant' && (
+            <div className="space-y-4">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                  AI Study Tutor & Help Assistant
+                </h1>
+                <p className="text-sm text-slate-600 mt-0.5">
+                  Get instant explanations for any Nursery-to-Masters syllabus topic, practice quizzes,
+                  or help using ScholarAxis Academy.
+                </p>
+              </div>
+              <AiStudyChatbot profile={profile} mode="full" contextHint={aiContextHint} />
+            </div>
           )}
 
           {activeTab === 'progress' && (
@@ -640,6 +712,14 @@ export function DashboardWorkspace({ profile, paymentSettings }: DashboardWorksp
               payments={payments}
             />
           )}
+
+          {activeTab === 'marketing' && profile.role === 'admin' && (
+            <MarketingAdminView
+              profile={profile}
+              paymentSettings={paymentSettings}
+              campaigns={campaigns}
+            />
+          )}
         </main>
       </div>
 
@@ -651,6 +731,30 @@ export function DashboardWorkspace({ profile, paymentSettings }: DashboardWorksp
         seenBroadcastIds={seenBroadcastIds}
         onMarkBroadcastSeen={handleMarkBroadcastSeen}
       />
+
+      {/* Floating Ask AI Tutor Button (hidden when already on full AI tab or drawer open) */}
+      {activeTab !== 'assistant' && !aiDrawerOpen && (
+        <button
+          type="button"
+          onClick={() => setAiDrawerOpen(true)}
+          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 px-4 py-3 text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-lg transition-colors cursor-pointer"
+        >
+          <Bot className="w-4 h-4" />
+          Ask AI Tutor
+        </button>
+      )}
+
+      {/* Slide-Over AI Assistant Drawer */}
+      {aiDrawerOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex justify-end">
+          <AiStudyChatbot
+            profile={profile}
+            mode="drawer"
+            contextHint={aiContextHint}
+            onClose={() => setAiDrawerOpen(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }

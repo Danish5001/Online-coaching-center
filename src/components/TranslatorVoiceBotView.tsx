@@ -68,27 +68,58 @@ export function TranslatorVoiceBotView() {
       ? customTargetLang.trim() || 'English'
       : targetLang;
 
+  const translateAbortRef = useRef<AbortController | null>(null);
+
   const handleTranslate = async () => {
-    if (!sourceText.trim() || translating) return;
+    if (!sourceText.trim()) return;
+    translateAbortRef.current?.abort();
+    const controller = new AbortController();
+    translateAbortRef.current = controller;
+
     setError('');
     setTranslating(true);
+    setTranslatedText('');
     try {
       const res = await fetch('/api/ai/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           text: sourceText.trim(),
           sourceLanguage: sourceLang,
           targetLanguage: effectiveTargetLang,
+          stream: true,
         }),
       });
-      const data = (await res.json()) as { translation?: string; error?: string };
-      if (!res.ok) throw new Error(data.error || 'Translation failed.');
-      setTranslatedText(data.translation || '');
+
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || 'Translation failed.');
+      }
+
+      if (res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          accumulated += decoder.decode(value, { stream: true });
+          setTranslatedText(accumulated);
+        }
+        accumulated += decoder.decode();
+        setTranslatedText(accumulated.trim());
+      } else {
+        const text = await res.text();
+        setTranslatedText(text.trim());
+      }
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Unable to translate text.');
     } finally {
-      setTranslating(false);
+      if (translateAbortRef.current === controller) {
+        setTranslating(false);
+      }
     }
   };
 
@@ -103,6 +134,39 @@ export function TranslatorVoiceBotView() {
     }
   };
 
+  const speakWithDeviceVoice = (textToRead: string, langHint: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return false;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(textToRead);
+    const langMap: Record<string, string> = {
+      Urdu: 'ur-PK',
+      Arabic: 'ar-SA',
+      English: 'en-US',
+      Hindi: 'hi-IN',
+      Turkish: 'tr-TR',
+      French: 'fr-FR',
+      Spanish: 'es-ES',
+      German: 'de-DE',
+      'Chinese (Simplified)': 'zh-CN',
+      Bengali: 'bn-BD',
+      Indonesian: 'id-ID',
+      Russian: 'ru-RU',
+      Japanese: 'ja-JP',
+      Korean: 'ko-KR',
+      Italian: 'it-IT',
+      Portuguese: 'pt-BR',
+    };
+    if (langMap[langHint]) {
+      utterance.lang = langMap[langHint];
+    }
+    utterance.rate = 0.95;
+    utterance.onend = () => setIsPlaying(false);
+    utterance.onerror = () => setIsPlaying(false);
+    setIsPlaying(true);
+    window.speechSynthesis.speak(utterance);
+    return true;
+  };
+
   const handleVoiceRead = async (which: 'source' | 'translated') => {
     const textToRead = which === 'translated' ? translatedText.trim() : sourceText.trim();
     if (!textToRead || generatingAudio) return;
@@ -110,6 +174,9 @@ export function TranslatorVoiceBotView() {
     if (audioRef.current) {
       audioRef.current.pause();
       setIsPlaying(false);
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
     }
 
     setError('');
@@ -124,7 +191,25 @@ export function TranslatorVoiceBotView() {
           style: voiceStyle,
         }),
       });
-      const data = (await res.json()) as { audioBase64?: string; mimeType?: string; error?: string };
+      const data = (await res.json()) as {
+        audioBase64?: string;
+        mimeType?: string;
+        error?: string;
+        quotaExceeded?: boolean;
+      };
+
+      if (res.status === 429 || data.quotaExceeded) {
+        const langHint = which === 'translated' ? effectiveTargetLang : sourceLang;
+        const started = speakWithDeviceVoice(textToRead, langHint);
+        setError(
+          started
+            ? 'Gemini AI Voice daily free-tier limit (10/day) reached — reading with your device voice instead. Select a billing-enabled API key in Settings > Secrets for higher AI voice quota.'
+            : data.error ||
+                'Gemini AI Voice daily free-tier limit reached. Select a billing-enabled API key in Settings > Secrets for higher quota.'
+        );
+        return;
+      }
+
       if (!res.ok || !data.audioBase64) {
         throw new Error(data.error || 'Voice bot could not generate speech.');
       }
@@ -145,6 +230,11 @@ export function TranslatorVoiceBotView() {
   };
 
   const togglePlayback = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setIsPlaying(false);
+      return;
+    }
     if (!audioRef.current) return;
     if (isPlaying) {
       audioRef.current.pause();
@@ -321,9 +411,10 @@ export function TranslatorVoiceBotView() {
               }
               className="w-full min-h-[186px] p-3.5 text-sm bg-[#F8FAFC] border border-slate-200 rounded-lg text-slate-900 whitespace-pre-wrap leading-relaxed"
             >
-              {translating
-                ? `Translating into ${effectiveTargetLang}...`
-                : translatedText || 'Your translation will appear here.'}
+              {translatedText ||
+                (translating
+                  ? `Translating into ${effectiveTargetLang}...`
+                  : 'Your translation will appear here.')}
             </div>
           </div>
         </div>

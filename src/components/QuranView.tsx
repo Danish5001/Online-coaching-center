@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookMarked,
   Check,
+  Copy,
   Download,
   FileDown,
   Languages,
@@ -56,10 +57,14 @@ export function QuranView() {
   const [error, setError] = useState('');
   const [showEnglish, setShowEnglish] = useState(false);
 
-  // Offline Full Quran state
+  // Offline Full Quran state & fast client Surah cache
   const [offlineArchive, setOfflineArchive] = useState<FullQuranArchive | null>(null);
   const [downloadingFull, setDownloadingFull] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState('');
+  const surahCacheRef = useRef<Map<number, QuranSurahDetail>>(new Map());
+  const [visibleAyahCount, setVisibleAyahCount] = useState(30);
+  const ayahsScrollRef = useRef<HTMLDivElement | null>(null);
+  const [copiedSurah, setCopiedSurah] = useState(false);
 
   // Audio playback (Arabic Qari & Voice Bot Urdu/Translation)
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -80,6 +85,7 @@ export function QuranView() {
     async function init() {
       const saved = await getFullQuranOffline();
       if (mounted && saved) {
+        saved.surahs.forEach((s) => surahCacheRef.current.set(s.number, s));
         setOfflineArchive(saved);
         setSurahs(
           saved.surahs.map((s) => ({
@@ -118,32 +124,55 @@ export function QuranView() {
     };
   }, []);
 
-  // Load selected Surah (from offline archive if present, otherwise from server API)
+  // Load selected Surah (instant from cache/offline archive, otherwise fast preloaded server API)
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
     stopAudio();
     setTranslatedAyahs({});
+    setVisibleAyahCount(30);
+    setCopiedSurah(false);
+    if (ayahsScrollRef.current) {
+      ayahsScrollRef.current.scrollTop = 0;
+    }
+
+    const prefetchNext = (currentNum: number) => {
+      const nextNum = currentNum + 1;
+      if (nextNum <= 114 && !surahCacheRef.current.has(nextNum)) {
+        fetch(`/api/quran/surah/${nextNum}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d: QuranSurahDetail | null) => {
+            if (d && d.number) surahCacheRef.current.set(d.number, d);
+          })
+          .catch(() => {});
+      }
+    };
 
     async function loadSurah() {
-      if (offlineArchive) {
-        const found = offlineArchive.surahs.find((s) => s.number === selectedSurahNum);
-        if (found) {
-          setSurahDetail(found);
-          setError('');
-          return;
-        }
+      const cached = surahCacheRef.current.get(selectedSurahNum);
+      if (cached) {
+        setSurahDetail(cached);
+        setLoadingSurah(false);
+        setError('');
+        prefetchNext(selectedSurahNum);
+        return;
       }
 
       setLoadingSurah(true);
       setError('');
       try {
-        const res = await fetch(`/api/quran/surah/${selectedSurahNum}`);
+        const res = await fetch(`/api/quran/surah/${selectedSurahNum}`, {
+          signal: controller.signal,
+        });
         const data = (await res.json()) as QuranSurahDetail & { error?: string };
         if (!res.ok) throw new Error(data.error || 'Failed to load Surah.');
         if (mounted) {
+          surahCacheRef.current.set(selectedSurahNum, data);
           setSurahDetail(data);
+          prefetchNext(selectedSurahNum);
         }
       } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
         if (mounted) {
           setError(err instanceof Error ? err.message : 'Could not fetch Surah.');
         }
@@ -155,6 +184,7 @@ export function QuranView() {
     loadSurah();
     return () => {
       mounted = false;
+      controller.abort();
     };
   }, [selectedSurahNum, offlineArchive]);
 
@@ -163,6 +193,9 @@ export function QuranView() {
       audioRef.current.pause();
       audioRef.current.onended = null;
       audioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
     }
     setPlayingAyahNum(null);
     setPlayingMode(null);
@@ -204,6 +237,39 @@ export function QuranView() {
     });
   };
 
+  const speakWithDeviceVoice = (ayahNum: number, textToRead: string, langHint: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return false;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(textToRead);
+    const langMap: Record<string, string> = {
+      Urdu: 'ur-PK',
+      Arabic: 'ar-SA',
+      English: 'en-US',
+      Hindi: 'hi-IN',
+      Turkish: 'tr-TR',
+      French: 'fr-FR',
+      Spanish: 'es-ES',
+      German: 'de-DE',
+      Indonesian: 'id-ID',
+      Chinese: 'zh-CN',
+      Bengali: 'bn-BD',
+    };
+    utterance.lang = langMap[langHint] || 'ur-PK';
+    utterance.rate = 0.92;
+    utterance.onend = () => {
+      setPlayingAyahNum(null);
+      setPlayingMode(null);
+    };
+    utterance.onerror = () => {
+      setPlayingAyahNum(null);
+      setPlayingMode(null);
+    };
+    setPlayingAyahNum(ayahNum);
+    setPlayingMode('voicebot');
+    window.speechSynthesis.speak(utterance);
+    return true;
+  };
+
   const handleVoiceBotRead = async (ayah: QuranAyah, textToRead: string) => {
     if (playingAyahNum === ayah.number && playingMode === 'voicebot') {
       stopAudio();
@@ -223,7 +289,25 @@ export function QuranView() {
           style: 'Calm, respectful, clear voice reading Quranic translation',
         }),
       });
-      const data = (await res.json()) as { audioBase64?: string; mimeType?: string; error?: string };
+      const data = (await res.json()) as {
+        audioBase64?: string;
+        mimeType?: string;
+        error?: string;
+        quotaExceeded?: boolean;
+      };
+
+      if (res.status === 429 || data.quotaExceeded) {
+        const langHint = translatedAyahs[ayah.number] ? targetLang : ayah.urdu ? 'Urdu' : 'Arabic';
+        const started = speakWithDeviceVoice(ayah.number, textToRead, langHint);
+        setError(
+          started
+            ? 'Gemini AI Voice daily free-tier limit (10/day) reached — playing with your device voice instead. Select a billing-enabled API key in Settings > Secrets for higher AI voice quota.'
+            : data.error ||
+                'Gemini AI Voice daily free-tier limit reached. Select a billing-enabled API key in Settings > Secrets for higher quota.'
+        );
+        return;
+      }
+
       if (!res.ok || !data.audioBase64) {
         throw new Error(data.error || 'Voice bot could not read this verse.');
       }
@@ -282,6 +366,7 @@ export function QuranView() {
         throw new Error(data.error || 'Could not download full Quran.');
       }
       await saveFullQuranOffline(data);
+      data.surahs.forEach((s) => surahCacheRef.current.set(s.number, s));
       setOfflineArchive(data);
       setDownloadStatus(
         `Full Holy Quran (${data.totalSurahs} Surahs, Arabic + Urdu Translation) saved on app for direct offline reading.`
@@ -292,6 +377,38 @@ export function QuranView() {
     } finally {
       setDownloadingFull(false);
     }
+  };
+
+  const handleCopyFullSurah = async () => {
+    if (!surahDetail) return;
+    const header = `Surah ${surahDetail.number}. ${surahDetail.englishName} (${surahDetail.name}) — ${surahDetail.englishNameTranslation} (${surahDetail.numberOfAyahs} Ayahs)`;
+    const body = surahDetail.ayahs
+      .map((a) => {
+        const lines = [
+          `[${surahDetail.number}:${a.numberInSurah}] ${a.arabic}`,
+          a.urdu ? `اردو: ${a.urdu}` : '',
+          showEnglish && a.english ? `English: ${a.english}` : '',
+        ].filter(Boolean);
+        return lines.join('\n');
+      })
+      .join('\n\n');
+    const fullText = `${header}\n\n${body}`;
+
+    try {
+      await navigator.clipboard.writeText(fullText);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = fullText;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+
+    setCopiedSurah(true);
+    setTimeout(() => setCopiedSurah(false), 2500);
   };
 
   const filteredSurahs = useMemo(() => {
@@ -491,6 +608,28 @@ export function QuranView() {
                     )}
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={handleCopyFullSurah}
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors cursor-pointer whitespace-nowrap ${
+                      copiedSurah
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {copiedSurah ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-700" />
+                        Copied Full Surah
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-slate-600" />
+                        Copy Full Surah
+                      </>
+                    )}
+                  </button>
+
                   <select
                     value={targetLang}
                     onChange={(e) => setTargetLang(e.target.value)}
@@ -516,9 +655,22 @@ export function QuranView() {
                 </div>
               </div>
 
-              {/* Ayahs List */}
-              <div className="divide-y divide-slate-100 max-h-[640px] overflow-y-auto">
-                {surahDetail.ayahs.map((ayah) => {
+              {/* Ayahs List (progressively rendered so long Surahs open instantly) */}
+              <div
+                ref={ayahsScrollRef}
+                onScroll={(e) => {
+                  const el = e.currentTarget;
+                  if (
+                    surahDetail &&
+                    visibleAyahCount < surahDetail.ayahs.length &&
+                    el.scrollHeight - el.scrollTop - el.clientHeight < 420
+                  ) {
+                    setVisibleAyahCount((c) => Math.min(c + 30, surahDetail.ayahs.length));
+                  }
+                }}
+                className="divide-y divide-slate-100 max-h-[640px] overflow-y-auto"
+              >
+                {surahDetail.ayahs.slice(0, visibleAyahCount).map((ayah) => {
                   const isPlayingArabic =
                     playingAyahNum === ayah.number && playingMode === 'arabic';
                   const isPlayingVoice =
@@ -630,6 +782,26 @@ export function QuranView() {
                     </div>
                   );
                 })}
+                {visibleAyahCount < surahDetail.ayahs.length && (
+                  <div className="p-5 text-center bg-[#F8FAFC] flex items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleAyahCount((c) => Math.min(c + 40, surahDetail.ayahs.length))
+                      }
+                      className="px-4 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg cursor-pointer"
+                    >
+                      Load More Ayahs ({visibleAyahCount} / {surahDetail.ayahs.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVisibleAyahCount(surahDetail.ayahs.length)}
+                      className="px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg cursor-pointer"
+                    >
+                      Show All
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           )}
